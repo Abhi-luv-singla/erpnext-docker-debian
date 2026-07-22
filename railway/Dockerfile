@@ -20,8 +20,9 @@ RUN echo "-> Start builder" \
     ### install your custom apps here
     # && bench get-app https://github.com/your-repo/custom_app
     ### India GST compliance (CGST/SGST/IGST automation, GSTR reports, e-Invoice, e-Way Bill)
-    ### Pinned to version-15 to match ERPNext v15
-    && bench get-app --branch version-15 --resolve-deps https://github.com/resilient-tech/india-compliance \
+    ### Pinned to v15.30.1: it requires ERPNext >= 15.60.0, which the base image
+    ### (15.91.3) satisfies. v15.30.2+ require ERPNext >= 15.113.0 and refuse to install.
+    && bench get-app --branch v15.30.1 --resolve-deps https://github.com/resilient-tech/india-compliance \
     && echo "-> Builder done!"
 
 
