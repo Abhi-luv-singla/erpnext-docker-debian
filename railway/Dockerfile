@@ -19,6 +19,9 @@ RUN echo "-> Start builder" \
     && sed -i 's/socket\.AF_INET, socket\.SOCK_STREAM/socket.AF_INET6, socket.SOCK_STREAM/g' /home/frappe/bench/apps/frappe/frappe/utils/connections.py \
     ### install your custom apps here
     # && bench get-app https://github.com/your-repo/custom_app
+    ### India GST compliance (CGST/SGST/IGST automation, GSTR reports, e-Invoice, e-Way Bill)
+    ### Pinned to version-15 to match ERPNext v15
+    && bench get-app --branch version-15 --resolve-deps https://github.com/resilient-tech/india-compliance \
     && echo "-> Builder done!"
 
 
