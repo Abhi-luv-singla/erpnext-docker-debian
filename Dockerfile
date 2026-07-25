@@ -107,6 +107,8 @@ RUN sudo apt-get update \
     && cd $benchFolderName \
     # install erpnext
     && bench get-app erpnext $erpnextRepo --branch $appBranch \
+    # install india-compliance for GST/tax automation (CGST/SGST/IGST, GSTR reports, e-Invoice, e-Way Bill)
+    && bench get-app --branch version-16 --resolve-deps https://github.com/resilient-tech/india-compliance \
     # delete temp file
     && sudo rm -rf /tmp/* \
     # start new site
@@ -114,6 +116,7 @@ RUN sudo apt-get update \
     --mariadb-root-password $mysqlPass  \
     --admin-password $adminPass \
     && bench --site $siteName install-app erpnext \
+    && bench --site $siteName install-app india_compliance \
     # use site
     && bench use $siteName \
     # compile all python file
