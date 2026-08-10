@@ -1,0 +1,553 @@
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+{% if frappe.session.user == "Guest" %}
+<div class="alert alert-warning">
+	Please <a href="/login?redirect-to=/bin-transfer">login</a> to access the bin transfer tool.
+</div>
+{% else %}
+<link rel="stylesheet" href="/assets/bin_tracking/css/bin_tracking.css">
+
+<style>
+	/* Step-stepper styling specific to the bin transfer wizard. */
+	.bin-transfer-progress {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 30px;
+		padding: 20px 0;
+		border-bottom: 2px solid var(--border-color, #bdc3c7);
+	}
+
+	.bin-transfer-progress .progress-step {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		flex: 1;
+		opacity: 0.5;
+		transition: opacity 0.3s;
+	}
+
+	.bin-transfer-progress .progress-step.active,
+	.bin-transfer-progress .progress-step.completed {
+		opacity: 1;
+	}
+
+	.bin-transfer-progress .progress-step .step-circle {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background: var(--disabled-bg, #ecf0f1);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+		font-size: 18px;
+		margin-bottom: 8px;
+		transition: all 0.3s;
+	}
+
+	.bin-transfer-progress .progress-step.active .step-circle {
+		background: var(--primary-color, #3498db);
+		color: white;
+		box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+	}
+
+	.bin-transfer-progress .progress-step.completed .step-circle {
+		background: var(--success-color, #27ae60);
+		color: white;
+	}
+
+	.bin-transfer-progress .step-label {
+		font-size: 12px;
+		text-align: center;
+		font-weight: 600;
+	}
+
+	#bin-transfer-wizard .form-section {
+		display: none;
+	}
+
+	#bin-transfer-wizard .form-section.active {
+		display: block;
+	}
+</style>
+
+<div class="bin-tracking-container" id="bin-transfer-wizard">
+	<!-- Progress Indicator -->
+	<div class="bin-transfer-progress">
+		<div class="progress-step active" data-step="1">
+			<div class="step-circle">1</div>
+			<div class="step-label">Barcode</div>
+		</div>
+		<div class="progress-step" data-step="2">
+			<div class="step-circle">2</div>
+			<div class="step-label">Source</div>
+		</div>
+		<div class="progress-step" data-step="3">
+			<div class="step-circle">3</div>
+			<div class="step-label">Destination</div>
+		</div>
+		<div class="progress-step" data-step="4">
+			<div class="step-circle">4</div>
+			<div class="step-label">Quantity</div>
+		</div>
+	</div>
+
+	<!-- Step 1: Scan Item Barcode -->
+	<div class="form-section active" id="step-1">
+		<h3><span class="step-indicator">1</span> Scan Item Barcode</h3>
+		<div class="form-group">
+			<label for="item-barcode" class="required">Item Barcode</label>
+			<input type="text" id="item-barcode" class="form-control" placeholder="Scan or enter item barcode" autofocus autocomplete="off">
+			<div class="form-hint">Press Enter after scanning</div>
+		</div>
+		<div id="item-info" class="alert alert-info" style="display: none;">
+			<div class="alert-content">
+				<div class="result-item">
+					<span class="result-label">Item Code:</span>
+					<span class="result-value item-code"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Item Name:</span>
+					<span class="result-value item-name"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">UOM:</span>
+					<span class="result-value item-uom"></span>
+				</div>
+			</div>
+		</div>
+		<div id="item-error" class="form-error" style="display: none;"></div>
+		<div id="item-loading" class="loading" style="display: none;">
+			<div class="spinner"></div>
+			<div class="loading-text">Scanning barcode...</div>
+		</div>
+	</div>
+
+	<!-- Step 2: Scan Source Bin -->
+	<div class="form-section" id="step-2">
+		<h3><span class="step-indicator">2</span> Scan Source Bin</h3>
+		<div class="form-group">
+			<label for="source-bin" class="required">Source Bin QR Code</label>
+			<input type="text" id="source-bin" class="form-control" placeholder="Scan source bin QR code" autocomplete="off">
+			<div class="form-hint">Scan the QR code from the source bin</div>
+		</div>
+		<div id="source-bin-info" class="alert alert-info" style="display: none;">
+			<div class="alert-content">
+				<div class="result-item">
+					<span class="result-label">Bin Name:</span>
+					<span class="result-value source-bin-name"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Bin Number:</span>
+					<span class="result-value source-bin-number"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Rack:</span>
+					<span class="result-value source-bin-rack"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Available Stock:</span>
+					<span class="result-value source-bin-stock"></span>
+				</div>
+			</div>
+		</div>
+		<div id="source-bin-error" class="form-error" style="display: none;"></div>
+		<div id="source-bin-loading" class="loading" style="display: none;">
+			<div class="spinner"></div>
+			<div class="loading-text">Validating source bin...</div>
+		</div>
+	</div>
+
+	<!-- Step 3: Scan Destination Bin -->
+	<div class="form-section" id="step-3">
+		<h3><span class="step-indicator">3</span> Scan Destination Bin</h3>
+		<div class="form-group">
+			<label for="dest-bin" class="required">Destination Bin QR Code</label>
+			<input type="text" id="dest-bin" class="form-control" placeholder="Scan destination bin QR code" autocomplete="off">
+			<div class="form-hint">Scan the QR code from the destination bin</div>
+		</div>
+		<div id="dest-bin-info" class="alert alert-info" style="display: none;">
+			<div class="alert-content">
+				<div class="result-item">
+					<span class="result-label">Bin Name:</span>
+					<span class="result-value dest-bin-name"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Bin Number:</span>
+					<span class="result-value dest-bin-number"></span>
+				</div>
+				<div class="result-item">
+					<span class="result-label">Rack:</span>
+					<span class="result-value dest-bin-rack"></span>
+				</div>
+			</div>
+		</div>
+		<div id="dest-bin-error" class="form-error" style="display: none;"></div>
+		<div id="dest-bin-loading" class="loading" style="display: none;">
+			<div class="spinner"></div>
+			<div class="loading-text">Validating destination bin...</div>
+		</div>
+	</div>
+
+	<!-- Step 4: Enter Quantity -->
+	<div class="form-section" id="step-4">
+		<h3><span class="step-indicator">4</span> Enter Transfer Quantity</h3>
+		<div class="form-group">
+			<label for="quantity" class="required">Quantity to Transfer</label>
+			<input type="number" id="quantity" class="form-control" placeholder="Enter quantity" min="0.01" step="0.01" autocomplete="off">
+			<div class="form-hint" id="quantity-hint"></div>
+		</div>
+		<div class="form-group">
+			<label for="remarks">Remarks (Optional)</label>
+			<textarea id="remarks" class="form-control" placeholder="Add any transfer notes..." rows="3" autocomplete="off"></textarea>
+		</div>
+		<div id="validation-error" class="form-error" style="display: none;"></div>
+		<div class="btn-group">
+			<button class="btn btn-success btn-lg" id="transfer-btn">Complete Transfer</button>
+			<button class="btn btn-outline btn-lg" id="cancel-btn">Cancel</button>
+		</div>
+		<div id="transfer-loading" class="loading" style="display: none;">
+			<div class="spinner"></div>
+			<div class="loading-text">Processing transfer...</div>
+		</div>
+	</div>
+
+	<!-- Transfer Result -->
+	<div id="transfer-result" class="alert" style="display: none; margin-top: 20px;">
+		<div class="alert-content" id="result-content"></div>
+	</div>
+
+	<!-- New Transfer Button -->
+	<button class="btn btn-primary btn-lg w-100" id="reset-btn" style="margin-top: 15px; display: none;">Start New Transfer</button>
+</div>
+
+<script>
+frappe.ready(function() {
+	var currentItem = null;
+	var sourceBinData = null;
+	var destBinData = null;
+	var sourceAvailableQty = 0;
+	var isProcessing = false;
+
+	function escapeHtml(text) {
+		return frappe.utils.escape_html(text == null ? '' : String(text));
+	}
+
+	// Update progress indicator
+	function updateProgress(stepNum) {
+		$('.bin-transfer-progress .progress-step').each(function() {
+			var step = parseInt($(this).data('step'), 10);
+			$(this).removeClass('active completed');
+			if (step < stepNum) {
+				$(this).addClass('completed');
+			} else if (step === stepNum) {
+				$(this).addClass('active');
+			}
+		});
+	}
+
+	// Show form section
+	function showStep(stepNum) {
+		$('#bin-transfer-wizard .form-section').removeClass('active');
+		$('#step-' + stepNum).addClass('active');
+		updateProgress(stepNum);
+		setTimeout(function() {
+			if (stepNum === 1) $('#item-barcode').focus();
+			else if (stepNum === 2) $('#source-bin').focus();
+			else if (stepNum === 3) $('#dest-bin').focus();
+			else if (stepNum === 4) $('#quantity').focus();
+		}, 100);
+	}
+
+	// Step 1: Scan item barcode
+	$('#item-barcode').on('keypress', function(e) {
+		if (e.which !== 13 || isProcessing) return;
+
+		var barcode = $(this).val().trim();
+		if (!barcode) {
+			$('#item-error').text('Please enter a barcode').show();
+			return;
+		}
+
+		isProcessing = true;
+		$('#item-loading').show();
+		$('#item-error').hide();
+
+		frappe.call({
+			method: 'bin_tracking.api.scan_item_barcode',
+			args: { barcode: barcode },
+			callback: function(r) {
+				$('#item-loading').hide();
+				isProcessing = false;
+
+				if (r.message && r.message.success) {
+					currentItem = r.message;
+					$('#item-info').find('.item-code').text(currentItem.item_code);
+					$('#item-info').find('.item-name').text(currentItem.item_name);
+					$('#item-info').find('.item-uom').text(currentItem.stock_uom);
+					$('#item-info').show();
+					$('#item-barcode').prop('disabled', true);
+					$('#step-1').addClass('completed');
+					showStep(2);
+				} else {
+					var errorMsg = (r.message && r.message.error) || 'Item not found';
+					$('#item-error').text(errorMsg).show();
+					$('#item-barcode').val('').focus();
+				}
+			},
+			error: function() {
+				$('#item-loading').hide();
+				isProcessing = false;
+				$('#item-error').text('Unable to fetch item details. Please try again.').show();
+				$('#item-barcode').val('').focus();
+			}
+		});
+	});
+
+	// Step 2: Scan source bin
+	$('#source-bin').on('keypress', function(e) {
+		if (e.which !== 13 || isProcessing) return;
+
+		var sourceBinCode = $(this).val().trim();
+		if (!sourceBinCode) {
+			$('#source-bin-error').text('Please scan the source bin').show();
+			return;
+		}
+
+		isProcessing = true;
+		$('#source-bin-loading').show();
+		$('#source-bin-error').hide();
+
+		frappe.call({
+			method: 'bin_tracking.api.scan_bin_barcode',
+			args: { barcode: sourceBinCode },
+			callback: function(r) {
+				$('#source-bin-loading').hide();
+				isProcessing = false;
+
+				if (r.message && r.message.success) {
+					sourceBinData = r.message.bin;
+					var contents = r.message.contents || [];
+
+					// Find how much of the scanned item is actually available in this bin
+					sourceAvailableQty = 0;
+					for (var i = 0; i < contents.length; i++) {
+						if (contents[i].item_code === currentItem.item_code) {
+							sourceAvailableQty = contents[i].quantity || 0;
+							break;
+						}
+					}
+
+					if (sourceAvailableQty <= 0) {
+						$('#source-bin-error').text(
+							'Item "' + currentItem.item_code + '" was not found in this bin. Scan the correct source bin.'
+						).show();
+						$('#source-bin').val('').focus();
+						return;
+					}
+
+					$('#source-bin-info').find('.source-bin-name').text(sourceBinData.name);
+					$('#source-bin-info').find('.source-bin-number').text(sourceBinData.bin_number);
+					$('#source-bin-info').find('.source-bin-rack').text(sourceBinData.warehouse_rack || 'N/A');
+					$('#source-bin-info').find('.source-bin-stock').text(sourceAvailableQty + ' ' + (currentItem.stock_uom || 'units'));
+					$('#source-bin-info').show();
+					$('#source-bin').prop('disabled', true);
+					$('#step-2').addClass('completed');
+					showStep(3);
+				} else {
+					var errorMsg = (r.message && r.message.error) || 'Bin not found';
+					$('#source-bin-error').text(errorMsg).show();
+					$('#source-bin').val('').focus();
+				}
+			},
+			error: function() {
+				$('#source-bin-loading').hide();
+				isProcessing = false;
+				$('#source-bin-error').text('Unable to fetch bin details. Please try again.').show();
+				$('#source-bin').val('').focus();
+			}
+		});
+	});
+
+	// Step 3: Scan destination bin
+	$('#dest-bin').on('keypress', function(e) {
+		if (e.which !== 13 || isProcessing) return;
+
+		var destBinCode = $(this).val().trim();
+		if (!destBinCode) {
+			$('#dest-bin-error').text('Please scan the destination bin').show();
+			return;
+		}
+
+		isProcessing = true;
+		$('#dest-bin-loading').show();
+		$('#dest-bin-error').hide();
+
+		frappe.call({
+			method: 'bin_tracking.api.scan_bin_barcode',
+			args: { barcode: destBinCode },
+			callback: function(r) {
+				$('#dest-bin-loading').hide();
+				isProcessing = false;
+
+				if (r.message && r.message.success) {
+					var candidate = r.message.bin;
+
+					if (candidate.name === sourceBinData.name) {
+						$('#dest-bin-error').text('Source and destination bins cannot be the same').show();
+						$('#dest-bin').val('').focus();
+						return;
+					}
+
+					destBinData = candidate;
+					$('#dest-bin-info').find('.dest-bin-name').text(destBinData.name);
+					$('#dest-bin-info').find('.dest-bin-number').text(destBinData.bin_number);
+					$('#dest-bin-info').find('.dest-bin-rack').text(destBinData.warehouse_rack || 'N/A');
+					$('#dest-bin-info').show();
+					$('#dest-bin').prop('disabled', true);
+					$('#step-3').addClass('completed');
+
+					// Update quantity hint with available stock
+					$('#quantity').attr('max', sourceAvailableQty);
+					$('#quantity-hint').text('Available in source bin: ' + sourceAvailableQty + ' ' + (currentItem.stock_uom || 'units'));
+
+					showStep(4);
+				} else {
+					var errorMsg = (r.message && r.message.error) || 'Bin not found';
+					$('#dest-bin-error').text(errorMsg).show();
+					$('#dest-bin').val('').focus();
+				}
+			},
+			error: function() {
+				$('#dest-bin-loading').hide();
+				isProcessing = false;
+				$('#dest-bin-error').text('Unable to fetch bin details. Please try again.').show();
+				$('#dest-bin').val('').focus();
+			}
+		});
+	});
+
+	// Step 4: Validate then complete transfer
+	$('#transfer-btn').on('click', function() {
+		if (isProcessing) return;
+
+		var quantity = parseFloat($('#quantity').val());
+		var remarks = $('#remarks').val().trim();
+
+		$('#validation-error').hide();
+
+		if (!quantity || quantity <= 0) {
+			$('#validation-error').text('Please enter a valid quantity').show();
+			return;
+		}
+
+		if (quantity > sourceAvailableQty) {
+			$('#validation-error').text('Quantity exceeds available stock in source bin (' + sourceAvailableQty + ' ' + (currentItem.stock_uom || 'units') + ')').show();
+			return;
+		}
+
+		isProcessing = true;
+		$('#transfer-btn').prop('disabled', true);
+		$('#cancel-btn').prop('disabled', true);
+		$('#transfer-loading').show();
+
+		var transferArgs = {
+			item_code: currentItem.item_code,
+			source_bin: sourceBinData.name,
+			destination_bin: destBinData.name,
+			quantity: quantity
+		};
+
+		// Pre-flight validation against the canonical API before committing the transfer
+		frappe.call({
+			method: 'bin_tracking.api.validate_transfer',
+			args: transferArgs,
+			callback: function(r) {
+				var validation = r.message || {};
+
+				if (!validation.valid) {
+					$('#transfer-loading').hide();
+					$('#transfer-btn').prop('disabled', false);
+					$('#cancel-btn').prop('disabled', false);
+					isProcessing = false;
+					$('#validation-error').text(validation.error || 'Transfer validation failed').show();
+					return;
+				}
+
+				frappe.call({
+					method: 'bin_tracking.api.process_transfer',
+					args: {
+						item_code: currentItem.item_code,
+						source_bin: sourceBinData.name,
+						destination_bin: destBinData.name,
+						quantity: quantity,
+						remarks: remarks
+					},
+					callback: function(r2) {
+						$('#transfer-loading').hide();
+						$('#transfer-btn').prop('disabled', false);
+						$('#cancel-btn').prop('disabled', false);
+						isProcessing = false;
+
+						if (r2.message && r2.message.success) {
+							$('#transfer-result')
+								.removeClass('alert-danger').addClass('alert-success')
+								.show()
+								.find('#result-content').html(
+									'<div class="alert-title">Transfer Completed Successfully!</div>'
+									+ '<div class="result-item"><span class="result-label">Transfer ID:</span><span class="result-value">' + escapeHtml(r2.message.transfer_id) + '</span></div>'
+									+ '<div class="result-item"><span class="result-label">Item:</span><span class="result-value">' + escapeHtml(currentItem.item_code) + '</span></div>'
+									+ '<div class="result-item"><span class="result-label">Quantity:</span><span class="result-value">' + escapeHtml(quantity) + ' ' + escapeHtml(currentItem.stock_uom) + '</span></div>'
+									+ '<div class="result-item"><span class="result-label">From Bin:</span><span class="result-value">' + escapeHtml(sourceBinData.bin_number) + '</span></div>'
+									+ '<div class="result-item"><span class="result-label">To Bin:</span><span class="result-value">' + escapeHtml(destBinData.bin_number) + '</span></div>'
+								);
+							$('#step-4').removeClass('active');
+							$('#reset-btn').show();
+						} else {
+							var errorMsg = (r2.message && r2.message.error) || 'Transfer failed. Please try again.';
+							$('#transfer-result')
+								.removeClass('alert-success').addClass('alert-danger')
+								.show()
+								.find('#result-content').html('<div class="alert-title">Transfer Failed</div>' + escapeHtml(errorMsg));
+						}
+					},
+					error: function() {
+						$('#transfer-loading').hide();
+						$('#transfer-btn').prop('disabled', false);
+						$('#cancel-btn').prop('disabled', false);
+						isProcessing = false;
+						$('#transfer-result')
+							.removeClass('alert-success').addClass('alert-danger')
+							.show()
+							.find('#result-content').html('<div class="alert-title">Error</div>Unable to process transfer. Please try again.');
+					}
+				});
+			},
+			error: function() {
+				$('#transfer-loading').hide();
+				$('#transfer-btn').prop('disabled', false);
+				$('#cancel-btn').prop('disabled', false);
+				isProcessing = false;
+				$('#validation-error').text('Unable to validate transfer. Please try again.').show();
+			}
+		});
+	});
+
+	// Cancel button
+	$('#cancel-btn').on('click', function() {
+		if (confirm('Are you sure you want to cancel this transfer?')) {
+			location.reload();
+		}
+	});
+
+	// Reset for new transfer
+	$('#reset-btn').on('click', function() {
+		location.reload();
+	});
+
+	$('#item-barcode').focus();
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -3,3 +3,9 @@
 /docs/_site/
 /.vscode
 !/.devcontainer*
+
+# Python bytecode — locally compiled bytecode is built against the host's
+# Python and is useless (and misleading) inside the container image
+__pycache__/
+*.py[cod]
+*.egg-info/
