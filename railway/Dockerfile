@@ -11,6 +11,10 @@ FROM pipech/erpnext-docker-debian:version-15-latest AS builder
 USER $systemUser
 WORKDIR /home/$systemUser/$benchFolderName
 
+# bin_tracking is a local, uncommitted-to-its-own-repo app folder, so it is
+# copied in rather than fetched with `bench get-app` (which requires a git repo)
+COPY --chown=frappe:frappe /bin_tracking /tmp/bin_tracking
+
 RUN echo "-> Start builder" \
     ### remove unused sites, created by base image
     && rm -rf /home/$systemUser/$benchFolderName/sites/site1.local \
@@ -23,6 +27,21 @@ RUN echo "-> Start builder" \
     ### Pinned to v15.30.1: it requires ERPNext >= 15.60.0, which the base image
     ### (15.91.3) satisfies. v15.30.2+ require ERPNext >= 15.113.0 and refuse to install.
     && bench get-app --branch v15.30.1 --resolve-deps https://github.com/resilient-tech/india-compliance \
+    ### Warehouse bin tracking (QR/barcode) — local app, installed manually
+    && cp -r /tmp/bin_tracking apps/bin_tracking \
+    # register the app at bench level so `bench build` / `bench install-app` see it.
+    # printf with a leading \n (not `echo`): get-app can leave apps.txt without a
+    # trailing newline, which would glue the name onto the previous entry.
+    # The sed then strips any blank line that leading \n may have introduced.
+    && printf '\nbin_tracking\n' >> sites/apps.txt \
+    && sed -i '/^$/d' sites/apps.txt \
+    # Install runtime deps explicitly, then the app itself with --no-deps.
+    # Without --no-deps, pip would try to resolve the "frappe"/"erpnext" entries
+    # in setup.py's install_requires from PyPI (unrelated packages) and could
+    # clobber the bench's editable installs.
+    && env/bin/pip install --no-cache-dir qrcode Pillow \
+    && env/bin/pip install --no-cache-dir -e apps/bin_tracking --no-deps \
+    && echo "-> apps.txt now contains:" && cat sites/apps.txt \
     && echo "-> Builder done!"
 
 
