@@ -4,7 +4,13 @@
 
 # This image is also based on frappe/bench which we use for production
 # https://github.com/pipech/erpnext-docker-debian/blob/master/Dockerfile
-FROM pipech/erpnext-docker-debian:version-15-latest AS builder
+# Pinned by digest, not just the :version-15-latest tag. That tag is rebuilt
+# upstream on a weekly schedule, so an unpinned build could silently pull a
+# different ERPNext version than the one this deployment was verified against.
+# Digest below == the image behind :version-15-latest at time of pinning, and
+# is the exact base of the currently running production deployment.
+# To upgrade: bump the digest deliberately, then redeploy and test.
+FROM pipech/erpnext-docker-debian:version-15-latest@sha256:4cfc2499c43f93e2fed79358ed8e349e75840e8889d5d99a67c0a9f6cd04e542 AS builder
 
 # These variable has been set from base image
 # $systemUser, $benchFolderName
@@ -52,7 +58,9 @@ RUN echo "-> Start builder" \
 # Image version should also match with stage 01
 # (Check pipech/erpnext-docker-debian Dockerfile)
 # https://github.com/frappe/frappe_docker/blob/main/images/bench/Dockerfile
-FROM frappe/bench:v5.22.9
+# Digest-pinned for the same reason as the builder stage above; the tag alone
+# is mutable. Must stay in step with the builder image (see note there).
+FROM frappe/bench:v5.22.9@sha256:1125a56f0b9395addf90f054fd986d0ab62ceabc16fe865cad2fe0e8c2df782e
 
 # this env should match stage 01
 # (Check pipech/erpnext-docker-debian Dockerfile)
